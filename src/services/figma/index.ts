@@ -1,10 +1,8 @@
 import { convertIntoAltNodes } from './altConversion'
+import { AltSceneNode } from './altMixins'
 
-export async function processFigmaStructure(node) {
-  console.log('node')
+export async function processFigmaNode(node: AltSceneNode) {
+  const updatedNode = convertIntoAltNodes([node], null)
 
-  const updatedNode = convertIntoAltNodes(node, null)
-  console.log(updatedNode)
-
-  return node
+  return updatedNode
 }

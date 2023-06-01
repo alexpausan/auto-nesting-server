@@ -5,6 +5,13 @@ export type AltSceneNode =
   | AltRectangleNode
   | AltEllipseNode
   | AltTextNode
+  | FrameNode
+  | GroupNode
+  | InstanceNode
+  | ComponentNode
+  | LineNode
+  | TextNode
+  | VectorNode
 
 export interface AltGeometryMixin {
   fills: ReadonlyArray<Paint> | PluginAPI['mixed']
@@ -100,6 +107,10 @@ export interface AltRectangleNode
     AltCornerMixin,
     AltRectangleCornerMixin {}
 
+export class AltVectorNode {
+  readonly type = 'VECTOR'
+}
+
 export interface AltEllipseNode extends AltDefaultShapeMixin, AltCornerMixin {}
 
 export interface AltFrameNode
@@ -164,24 +175,3 @@ export interface AltChildrenMixin {
   children: Array<AltSceneNode>
   isRelative?: boolean
 }
-
-// // DOCUMENT
-// class AltDocumentNode {
-//   type = "DOCUMENT";
-//   children = [];
-// }
-
-// // PAGE
-// class AltPageNode {
-//   type = "PAGE";
-//   children = [];
-//   _selection: Array<SceneNode> = [];
-
-//   get selection() {
-//     return this._selection || [];
-//   }
-
-//   set selection(value) {
-//     this._selection = value;
-//   }
-// }

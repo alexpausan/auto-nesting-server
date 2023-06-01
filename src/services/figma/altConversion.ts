@@ -1,3 +1,5 @@
+import { getBoundingRect as getBoundingRectFigma } from '@figma-plugin/helpers'
+
 import { convertNodesOnRectangle } from './convertNodesOnRectangle'
 import {
   AltSceneNode,
@@ -12,19 +14,111 @@ import {
   AltCornerMixin,
   AltRectangleCornerMixin,
   AltDefaultShapeMixin,
-  AltEllipseNode,
 } from './altMixins'
-import { convertToAutoLayout } from './convertToAutoLayout'
+
+const NODE_IS_VECTOR = {
+  VECTOR: true,
+  ELLIPSE: true,
+  STAR: true,
+  POLYGON: true,
+}
+
+const SVG_INDICATOR: ImagePaint = {
+  type: 'IMAGE',
+  imageHash: 'SVG-TRANSFORM',
+  scaleMode: 'FIT',
+}
+
+// import { convertToAutoLayout } from './convertToAutoLayout'
+
+export const convertIntoAltNodes = (
+  sceneNode: ReadonlyArray<AltSceneNode>,
+  altParent: AltFrameNode | AltGroupNode | null = null
+): Array<AltSceneNode> => {
+  const mapped: Array<AltSceneNode | null> = sceneNode.map((node: AltSceneNode) => {
+    const { type, visible } = node
+
+    // We skip the invisible nodes
+    if (!visible) {
+      return null
+    }
+
+    if (type === 'LINE') {
+      node = computeLayout(node) as AltRectangleNode
+
+      // Lines have a height of zero, but they must have a height, so add 1.
+      node.height = 1
+      // Given it will be a rectangle, the line should be centered
+      node.strokeAlign = 'CENTER'
+      // Remove 1 since it now has a height of 1. It won't be visually perfect, but will be almost.
+      console.log(node.strokeWeight)
+      node.strokeWeight = node.strokeWeight - 1
+
+      return node
+    }
+
+    if (type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
+      if (containsOnlyVectors(node as NodeWithChildren)) {
+        node.fills = [SVG_INDICATOR]
+        return node
+      }
+
+      return frameNodeToAlt(node as FrameNodeToAlt, altParent)
+    }
+
+    if (type === 'GROUP') {
+      // if Group has only one child, we skip it
+      if (node.children.length === 1) {
+        console.log(111)
+
+        return convertIntoAltNodes(node.children as Array<AltSceneNode>, altParent)[0]
+      }
+
+      if (containsOnlyVectors(node as NodeWithChildren)) {
+        const altNode = new AltFrameNode()
+        console.log(222)
+        altNode.fills = [SVG_INDICATOR]
+        return node
+      }
+
+      const altNode = computeLayout(node) as AltGroupNode
+
+      altNode.children = convertIntoAltNodes(node.children as Array<AltSceneNode>, altNode)
+
+      // try to find big rect and regardless of that result, also try to convert to autolayout.
+      // There is a big chance this will be returned as a Frame
+      // also, Group will always have at least 2 children.
+
+      return convertNodesOnRectangle(altNode)
+    }
+
+    if (NODE_IS_VECTOR[type]) {
+      node = computeLayout(node)
+
+      return {
+        ...node,
+        type: 'VECTOR',
+      } as AltSceneNode
+    }
+
+    node = computeLayout(node)
+    return node
+  })
+
+  return mapped.filter(notEmpty)
+}
 
 export const convertSingleNodeToAlt = (
-  node: SceneNode,
+  node: AltSceneNode,
   parent: AltFrameNode | AltGroupNode | null = null
 ): AltSceneNode => {
   return convertIntoAltNodes([node], parent)[0]
 }
 
+type FrameNodeToAlt = FrameNode | InstanceNode | ComponentNode
+
 export const frameNodeToAlt = (
-  node: FrameNode | InstanceNode | ComponentNode,
+  node: FrameNodeToAlt,
   altParent: AltFrameNode | AltGroupNode | null = null
 ): AltRectangleNode | AltFrameNode | AltGroupNode => {
   if (node.children.length === 0) {
@@ -46,9 +140,9 @@ export const frameNodeToAlt = (
   convertCorner(altNode, node)
   convertRectangleCorner(altNode, node)
 
-  altNode.children = convertIntoAltNodes(node.children, altNode)
+  altNode.children = convertIntoAltNodes(node.children as Array<AltSceneNode>, altNode)
 
-  return convertToAutoLayout(convertNodesOnRectangle(altNode))
+  return convertNodesOnRectangle(altNode)
 }
 
 // auto convert Frame to Rectangle when Frame has no Children
@@ -71,189 +165,26 @@ const frameToRectangleNode = (
   return newNode
 }
 
-export const convertIntoAltNodes = (
-  sceneNode: ReadonlyArray<SceneNode>,
-  altParent: AltFrameNode | AltGroupNode | null = null
-): Array<AltSceneNode> => {
-  const mapped: Array<AltSceneNode | null> = sceneNode.map((node: SceneNode) => {
-    if (node.type === 'RECTANGLE' || node.type === 'ELLIPSE') {
-      let altNode
-      if (node.type === 'RECTANGLE') {
-        altNode = new AltRectangleNode()
-        convertRectangleCorner(altNode, node)
-      } else {
-        altNode = new AltEllipseNode()
-      }
+type NodeWithChildren = FrameNode | InstanceNode | ComponentNode | GroupNode
 
-      altNode.id = node.id
-      altNode.name = node.name
-
-      if (altParent) {
-        altNode.parent = altParent
-      }
-
-      convertDefaultShape(altNode, node)
-      convertCorner(altNode, node)
-
-      return altNode
-    } else if (node.type === 'LINE') {
-      const altNode = new AltRectangleNode()
-
-      altNode.id = node.id
-      altNode.name = node.name
-
-      if (altParent) {
-        altNode.parent = altParent
-      }
-
-      convertDefaultShape(altNode, node)
-
-      // Lines have a height of zero, but they must have a height, so add 1.
-      altNode.height = 1
-
-      // Let them be CENTER, since on Lines this property is ignored.
-      altNode.strokeAlign = 'CENTER'
-
-      // Remove 1 since it now has a height of 1. It won't be visually perfect, but will be almost.
-      altNode.strokeWeight = altNode.strokeWeight - 1
-
-      return altNode
-    } else if (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'COMPONENT') {
-      const iconToRect = iconToRectangle(node, altParent)
-
-      if (iconToRect != null) {
-        return iconToRect
-      }
-
-      return frameNodeToAlt(node, altParent)
-    } else if (node.type === 'GROUP') {
-      if (node.children.length === 1 && node.visible !== false) {
-        // if Group is visible and has only one child, Group should disappear.
-        // there will be a single value anyway.
-        return convertIntoAltNodes(node.children, altParent)[0]
-      }
-
-      const iconToRect = iconToRectangle(node, altParent)
-      if (iconToRect != null) {
-        return iconToRect
-      }
-
-      const altNode = new AltGroupNode()
-
-      altNode.id = node.id
-      altNode.name = node.name
-
-      if (altParent) {
-        altNode.parent = altParent
-      }
-
-      convertLayout(altNode, node)
-      convertBlend(altNode, node)
-
-      altNode.children = convertIntoAltNodes(node.children, altNode)
-
-      // try to find big rect and regardless of that result, also try to convert to autolayout.
-      // There is a big chance this will be returned as a Frame
-      // also, Group will always have at least 2 children.
-      return convertNodesOnRectangle(altNode)
-    } else if (node.type === 'TEXT') {
-      const altNode = new AltTextNode()
-
-      altNode.id = node.id
-      altNode.name = node.name
-
-      if (altParent) {
-        altNode.parent = altParent
-      }
-
-      convertDefaultShape(altNode, node)
-      convertIntoAltText(altNode, node)
-      return altNode
-    } else if (node.type === 'VECTOR') {
-      const altNode = new AltRectangleNode()
-      altNode.id = node.id
-      altNode.name = node.name
-
-      if (altParent) {
-        altNode.parent = altParent
-      }
-
-      convertDefaultShape(altNode, node)
-
-      // Vector support is still missing. Meanwhile, add placeholder.
-      altNode.cornerRadius = 8
-
-      if (altNode.fills === figma.mixed || altNode.fills.length === 0) {
-        // Use rose[400] from Tailwind 2 when Vector has no color.
-        altNode.fills = [
-          {
-            type: 'SOLID',
-            color: {
-              r: 0.5,
-              g: 0.23,
-              b: 0.27,
-            },
-            visible: true,
-            opacity: 0.5,
-            blendMode: 'NORMAL',
-          },
-        ]
-      }
-
-      return altNode
-    }
-
-    return null
-  })
-
-  return mapped.filter(notEmpty)
+const containsOnlyVectors = (node: NodeWithChildren): boolean => {
+  return node.children.every((d) => NODE_IS_VECTOR[d.type])
 }
 
-const iconToRectangle = (
-  node: FrameNode | InstanceNode | ComponentNode | GroupNode,
-  altParent: AltFrameNode | AltGroupNode | null
-): AltRectangleNode | null => {
-  if (node.children.every((d) => d.type === 'VECTOR')) {
-    const altNode = new AltRectangleNode()
-    altNode.id = node.id
-    altNode.name = node.name
+// @TODO: decide if I should apply transnform: rotate(node.rotation)
+const computeLayout = (node: AltSceneNode): AltSceneNode => {
+  // Get the correct X/Y position when rotation is applied.
+  // This won't guarantee a perfect position, since we would still
+  // need to calculate the offset based on node width/height to compensate,
+  // which we are not currently doing. However, this is a lot better than nothing and will help LineNode.
 
-    if (altParent) {
-      altNode.parent = altParent
-    }
-
-    convertBlend(altNode, node)
-
-    // width, x, y
-    convertLayout(altNode, node)
-
-    // Vector support is still missing. Meanwhile, add placeholder.
-    altNode.cornerRadius = 8
-
-    altNode.strokes = []
-    altNode.strokeWeight = 0
-    altNode.strokeMiterLimit = 0
-    altNode.strokeAlign = 'CENTER'
-    altNode.strokeCap = 'NONE'
-    altNode.strokeJoin = 'BEVEL'
-    altNode.dashPattern = []
-    altNode.fillStyleId = ''
-    altNode.strokeStyleId = ''
-
-    altNode.fills = [
-      {
-        type: 'IMAGE',
-        imageHash: '',
-        scaleMode: 'FIT',
-        visible: true,
-        opacity: 0.5,
-        blendMode: 'NORMAL',
-      },
-    ]
-
-    return altNode
+  if (node.rotation !== undefined && Math.round(node.rotation) !== 0) {
+    const boundingRect = getBoundingRectFigma([node] as SceneNode[])
+    node.x = boundingRect.x
+    node.y = boundingRect.y
   }
-  return null
+
+  return node
 }
 
 const convertLayout = (altNode: AltLayoutMixin, node: LayoutMixin) => {
@@ -262,9 +193,9 @@ const convertLayout = (altNode: AltLayoutMixin, node: LayoutMixin) => {
   // need to calculate the offset based on node width/height to compensate,
   // which we are not currently doing. However, this is a lot better than nothing and will help LineNode.
   if (node.rotation !== undefined && Math.round(node.rotation) !== 0) {
-    const boundingRect = getBoundingRect(node)
-    altNode.x = boundingRect.x
-    altNode.y = boundingRect.y
+    // const boundingRect = getBoundingRect(node)
+    // altNode.x = boundingRect.x
+    // altNode.y = boundingRect.y
   } else {
     altNode.x = node.x
     altNode.y = node.y
@@ -376,65 +307,4 @@ const applyMatrixToPoint = (matrix: number[][], point: number[]): number[] => {
     point[0] * matrix[0][0] + point[1] * matrix[0][1] + matrix[0][2],
     point[0] * matrix[1][0] + point[1] * matrix[1][1] + matrix[1][2],
   ]
-}
-
-/**
- *  this function return a bounding rect for an nodes
- */
-// x/y absolute coordinates
-// height/width
-// x2/y2 bottom right coordinates
-export const getBoundingRect = (
-  node: LayoutMixin
-): {
-  x: number
-  y: number
-  // x2: number;
-  // y2: number;
-  // height: number;
-  // width: number;
-} => {
-  const boundingRect = {
-    x: 0,
-    y: 0,
-    // x2: 0,
-    // y2: 0,
-    // height: 0,
-    // width: 0,
-  }
-
-  const halfHeight = node.height / 2
-  const halfWidth = node.width / 2
-
-  const [[c0, s0, x], [s1, c1, y]] = node.absoluteTransform
-  const matrix = [
-    [c0, s0, x + halfWidth * c0 + halfHeight * s0],
-    [s1, c1, y + halfWidth * s1 + halfHeight * c1],
-  ]
-
-  // the coordinates of the corners of the rectangle
-  const XY: {
-    x: number[]
-    y: number[]
-  } = {
-    x: [1, -1, 1, -1],
-    y: [1, -1, -1, 1],
-  }
-
-  // fill in
-  for (let i = 0; i <= 3; i++) {
-    const a = applyMatrixToPoint(matrix, [XY.x[i] * halfWidth, XY.y[i] * halfHeight])
-    XY.x[i] = a[0]
-    XY.y[i] = a[1]
-  }
-
-  XY.x.sort((a, b) => a - b)
-  XY.y.sort((a, b) => a - b)
-
-  return {
-    x: XY.x[0],
-    y: XY.y[0],
-  }
-
-  return boundingRect
 }

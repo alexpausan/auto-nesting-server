@@ -1,4 +1,4 @@
-import { processFigmaStructure } from './figma'
+import { processFigmaNode } from './figma'
 
 type Magic_Payload = {
   type: string
@@ -10,10 +10,13 @@ export async function getResponsiveUI(node: Magic_Payload) {
     return
   }
 
+  // TODO: Trasform all sources to a common format that should have at least:
+  // width, height, x, y, layout and children
+
   const { type, data } = node
 
   if (type === 'figma') {
-    return await processFigmaStructure(data)
+    return await processFigmaNode(data)
   }
 
   return 'No type found'
