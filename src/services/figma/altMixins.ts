@@ -1,6 +1,4 @@
 // ALTSCENENODE
-import '@figma/plugin-typings'
-
 export type AltSceneNode =
   | AltFrameNode
   | AltGroupNode
