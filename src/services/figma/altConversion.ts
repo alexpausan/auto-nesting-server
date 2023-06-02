@@ -3,6 +3,7 @@ import { getBoundingRect as getBoundingRectFigma } from '@figma-plugin/helpers'
 // import { convertNodesOnRectangle } from './convertNodesOnRectangle'
 // import { convertToAutoLayout } from './convertToAutoLayout'
 
+// @TODO: refactor types to be more specific for my usecase
 import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altMixins'
 
 const VECTOR_TYPES = {
@@ -18,7 +19,6 @@ const SVG_INDICATOR: ImagePaint = {
   scaleMode: 'FIT',
 }
 
-type FrameTypes = FrameNode | InstanceNode | ComponentNode
 type NodeWithChildren = FrameNode | InstanceNode | ComponentNode | GroupNode
 
 export const convertIntoAltNodes = (
@@ -45,36 +45,12 @@ export const convertIntoAltNodes = (
       return altNode
     }
 
-    if (type === 'GROUP') {
-      const { children } = node
-      // if Group has only one child, we skip it and return it's child
-      if (children.length === 1) {
-        const processedChild = convertIntoAltNodes(children as Array<AltSceneNode>, altParent)
-        return processedChild[0]
-      }
-
-      const altNode = computeLayout(node) as AltGroupNode
-
-      // When all children are vector, we set the Fill with an indicator that will be processed in Figma
-      if (containsOnlyVectors(node as NodeWithChildren)) {
-        return {
-          ...altNode,
-          fills: [SVG_INDICATOR],
-        }
-      }
-
-      altNode.children = convertIntoAltNodes(children as Array<AltSceneNode>, altNode)
-      // try to find big rect and regardless of that result, also try to convert to autolayout.
-      // There is a big chance this will be returned as a Frame
-      // also, Group will always have at least 2 children.
-      return altNode
-    }
-
-    if (type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
+    if (type === 'GROUP' || type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
       const { children } = node
       const altNode = computeLayout(node) as AltFrameNode
 
-      // if it has no children, convert frame to rectangle
+      // if it has no children, convert frame to rectangle.
+      // Groups cannot be in this situation so we're ok
       if (children.length === 0) {
         return {
           ...altNode,
@@ -82,6 +58,20 @@ export const convertIntoAltNodes = (
         }
       }
 
+      if (children.length === 1) {
+        // Skip it and return the child if Group has only one child,
+        if (type === 'GROUP') {
+          const processedChild = convertIntoAltNodes(children as Array<AltSceneNode>, altParent)
+          return processedChild[0]
+        }
+
+        // Fix this: https://stackoverflow.com/questions/57859754/flexbox-space-between-but-center-if-one-element
+        // It affects HTML, Tailwind, Flutter and possibly SwiftUI. So, let's be consistent.
+        if (node.primaryAxisAlignItems === 'SPACE_BETWEEN') {
+          altNode.primaryAxisAlignItems = 'CENTER'
+        }
+      }
+
       if (containsOnlyVectors(node as NodeWithChildren)) {
         return {
           ...altNode,
@@ -89,14 +79,7 @@ export const convertIntoAltNodes = (
         }
       }
 
-      // Fix this: https://stackoverflow.com/questions/57859754/flexbox-space-between-but-center-if-one-element
-      // It affects HTML, Tailwind, Flutter and possibly SwiftUI. So, let's be consistent.
-      if (children.length === 1 && node.primaryAxisAlignItems === 'SPACE_BETWEEN') {
-        altNode.primaryAxisAlignItems = 'CENTER'
-      }
-
       altNode.children = convertIntoAltNodes(node.children as Array<AltSceneNode>, altNode)
-
       return altNode
     }
 
