@@ -4,13 +4,20 @@ import { getBoundingRect as getBoundingRectFigma } from '@figma-plugin/helpers'
 // import { convertToAutoLayout } from './convertToAutoLayout'
 
 // @TODO: refactor types to be more specific for my usecase
-import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altMixins'
+import {
+  AltSceneNode,
+  AltRectangleNode,
+  AltFrameNode,
+  AltGroupNode,
+  AltVectorNode,
+} from './altMixins'
 
 const VECTOR_TYPES = {
   VECTOR: true,
   ELLIPSE: true,
   STAR: true,
   POLYGON: true,
+  RECTANGLE: true,
 }
 
 const SVG_INDICATOR: ImagePaint = {
@@ -20,21 +27,41 @@ const SVG_INDICATOR: ImagePaint = {
 }
 
 type NodeWithChildren = FrameNode | InstanceNode | ComponentNode | GroupNode
+type RestType = Omit<AltSceneNode, 'type'>
 
 export const convertIntoAltNodes = (
   sceneNode: ReadonlyArray<AltSceneNode>,
   altParent: AltFrameNode | AltGroupNode | null = null
 ): Array<AltSceneNode> => {
   const mapped: Array<AltSceneNode | null> = sceneNode.map((node: AltSceneNode) => {
-    const { type, visible } = node
+    const { type, visible, rotation } = node
 
     // We skip the invisible nodes
     if (!visible) {
       return null
     }
 
+    if (type in VECTOR_TYPES) {
+      return {
+        ...node,
+        type: 'VECTOR',
+      } as AltSceneNode
+    }
+
+    // If it is rotated, Figma will take the height of the bounding box.
+    // We use that too and apply transform. We apply it for any other type than Vectors
+    if (rotation !== undefined && Math.round(rotation) !== 0) {
+      // @ts-ignore
+      node.height = node.absoluteBoundingBox.height
+      // @ts-ignore
+      node.transform = `rotate(${Math.round(rotation)}deg)`
+    }
+
     if (type === 'LINE') {
-      const altNode = computeLayout(node) as AltRectangleNode
+      const { type, ...rest } = node
+
+      const altNode = new AltRectangleNode()
+      Object.assign(altNode, rest)
 
       // Lines have a height of zero, and we replace it with the stroke value
       altNode.height = altNode.strokeWeight
@@ -47,15 +74,18 @@ export const convertIntoAltNodes = (
 
     if (type === 'GROUP' || type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
       const { children } = node
-      const altNode = computeLayout(node) as AltFrameNode
+      const { type, ...rest } = node
+
+      const altNode = new AltFrameNode()
+      Object.assign(altNode, rest)
 
       // if it has no children, convert frame to rectangle.
       // Groups cannot be in this situation so we're ok
       if (children.length === 0) {
         return {
-          ...altNode,
+          ...node,
           type: 'RECTANGLE',
-        }
+        } as AltRectangleNode
       }
 
       if (children.length === 1) {
@@ -76,23 +106,13 @@ export const convertIntoAltNodes = (
         return {
           ...altNode,
           fills: [SVG_INDICATOR],
-        }
+        } as AltFrameNode
       }
 
-      altNode.children = convertIntoAltNodes(node.children as Array<AltSceneNode>, altNode)
+      altNode.children = convertIntoAltNodes(children as Array<AltSceneNode>, altNode)
       return altNode
     }
 
-    if (type in VECTOR_TYPES) {
-      node = computeLayout(node)
-
-      return {
-        ...node,
-        type: 'VECTOR',
-      } as AltSceneNode
-    }
-
-    node = computeLayout(node)
     return node
   })
 
@@ -109,9 +129,11 @@ const computeLayout = (node: AltSceneNode): AltSceneNode => {
   // This won't guarantee a perfect position, since we would still
   // need to calculate the offset based on node width/height to compensate,
   // which we are not currently doing. However, this is a lot better than nothing and will help LineNode.
-
   if (node.rotation !== undefined && Math.round(node.rotation) !== 0) {
     const boundingRect = getBoundingRectFigma([node] as SceneNode[])
+    // console.log(node.x, node.y, boundingRect)
+    // console.log(node)
+    // console.log(node.x, node.y, boundingRect)
     node.x = boundingRect.x
     node.y = boundingRect.y
   }

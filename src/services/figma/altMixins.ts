@@ -24,6 +24,8 @@ export interface AltGeometryMixin {
   dashPattern: ReadonlyArray<number>
   fillStyleId: string | PluginAPI['mixed']
   strokeStyleId: string
+  readonly absoluteBoundingBox: Rect | null
+  transform: string
 }
 
 export interface AltCornerMixin {
