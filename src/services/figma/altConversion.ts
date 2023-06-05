@@ -1,5 +1,5 @@
 import { convertNodesThatActAsBG } from './convertNodesThatActAsBG'
-// import { convertToAutoLayout } from './convertToAutoLayout'
+import { convertToAutoLayout } from './convertToAutoLayout'
 
 // @TODO: refactor types to be more specific for my usecase
 import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altMixins'
@@ -94,7 +94,7 @@ export const convertIntoAltNodes = (
 
       altNode.children = convertIntoAltNodes(children as Array<AltSceneNode>, altNode)
 
-      return convertNodesThatActAsBG(altNode)
+      return convertToAutoLayout(convertNodesThatActAsBG(altNode))
     }
 
     return node

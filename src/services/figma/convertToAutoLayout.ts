@@ -1,10 +1,4 @@
 import { AltFrameNode, AltGroupNode, AltSceneNode } from './altMixins'
-import { convertGroupToFrame } from './convertGroupToFrame'
-
-// Get the element with the highest occurrence in an array. https://stackoverflow.com/a/20762713
-const mostFrequentArrayEl = (arr: Array<string>): string | undefined => {
-  return arr.sort((a, b) => arr.filter((v) => v === a).length - arr.filter((v) => v === b).length).pop()
-}
 
 /**
  * Add AutoLayout attributes if layout has items aligned (either vertically or horizontally).
@@ -13,10 +7,12 @@ const mostFrequentArrayEl = (arr: Array<string>): string | undefined => {
  * If it finds, add the correct attributes. When original node is a Group,
  * convert it to Frame before adding the attributes. Group doesn't have AutoLayout properties.
  */
-export const convertToAutoLayout = (node: AltFrameNode | AltGroupNode): AltFrameNode | AltGroupNode => {
-  // only go inside when AutoLayout is not already set.
+export const convertToAutoLayout = (node: AltFrameNode): AltFrameNode => {
+  let { layoutMode, type, name } = node
 
-  if (('layoutMode' in node && node.layoutMode === 'NONE' && node.children.length > 0) || node.type === 'GROUP') {
+  console.log(name, layoutMode)
+  // only go inside when AutoLayout is not already set.
+  if (type === 'FRAME') {
     const [orderedChildren, direction, itemSpacing] = reorderChildrenIfAligned(node.children)
     node.children = orderedChildren
 
@@ -27,11 +23,6 @@ export const convertToAutoLayout = (node: AltFrameNode | AltGroupNode): AltFrame
     if (direction === 'NONE' && node.children.length !== 1) {
       // catches when children is 0 or children is larger than 1
       return node
-    }
-
-    // if node is a group, convert to frame
-    if (node.type === 'GROUP') {
-      node = convertGroupToFrame(node)
     }
 
     if (direction === 'NONE' && node.children.length === 1) {
@@ -52,14 +43,10 @@ export const convertToAutoLayout = (node: AltFrameNode | AltGroupNode): AltFrame
 
     // set children to INHERIT or STRETCH
     node.children.map((d) => {
-      // @ts-ignore current node can't be AltGroupNode because it was converted into AltFrameNode
       layoutAlignInChild(d, node)
     })
 
-    const allChildrenDirection = node.children.map((d) =>
-      // @ts-ignore current node can't be AltGroupNode because it was converted into AltFrameNode
-      primaryAxisDirection(d, node)
-    )
+    const allChildrenDirection = node.children.map((d) => primaryAxisDirection(d, node))
 
     const primaryDirection = allChildrenDirection.map((d) => d.primary)
     const counterDirection = allChildrenDirection.map((d) => d.counter)
@@ -86,7 +73,7 @@ const average = (arr: Array<number>) => arr.reduce((p, c) => p + c, 0) / arr.len
  * This allows a small tolerance, which is useful when items are slightly overlayed.
  * If you set this lower, layouts will get more responsive but with less visual fidelity.
  */
-const threshold = -2
+const ORDER_THRESHOLD = -2
 
 /**
  * Verify if children are sorted by their relative position and return them sorted, if identified.
@@ -101,7 +88,7 @@ const reorderChildrenIfAligned = (
   const updateChildren = [...children]
   const [visit, avg] = shouldVisit(updateChildren)
 
-  // check against a threshold
+  // check against a ORDER_THRESHOLD
   if (visit === 'VERTICAL') {
     // if all elements are horizontally aligned
     return [updateChildren.sort((a, b) => a.y - b.y), 'VERTICAL', avg]
@@ -121,17 +108,19 @@ const reorderChildrenIfAligned = (
  * If no correspondence is found, returns "NONE".
  * In a previous version, it used a "standard deviation", but "average" performed better.
  */
-const shouldVisit = (children: ReadonlyArray<AltSceneNode>): ['HORIZONTAL' | 'VERTICAL' | 'NONE', number] => {
+const shouldVisit = (
+  children: ReadonlyArray<AltSceneNode>
+): ['HORIZONTAL' | 'VERTICAL' | 'NONE', number] => {
   const intervalY = calculateInterval(children, 'y')
   const intervalX = calculateInterval(children, 'x')
 
   const avgX = average(intervalX)
   const avgY = average(intervalY)
 
-  if (!intervalY.every((d) => d >= threshold)) {
-    if (!intervalX.every((d) => d >= threshold)) {
-      if (avgY <= threshold) {
-        if (avgX <= threshold) {
+  if (!intervalY.every((d) => d >= ORDER_THRESHOLD)) {
+    if (!intervalX.every((d) => d >= ORDER_THRESHOLD)) {
+      if (avgY <= ORDER_THRESHOLD) {
+        if (avgX <= ORDER_THRESHOLD) {
           return ['NONE', 0]
         }
         return ['HORIZONTAL', avgX]
@@ -149,7 +138,10 @@ const shouldVisit = (children: ReadonlyArray<AltSceneNode>): ['HORIZONTAL' | 'VE
  * This function calculates the distance (interval) between items.
  * Example: for [item]--8--[item]--8--[item], the result is [8, 8]
  */
-const calculateInterval = (children: ReadonlyArray<AltSceneNode>, xOrY: 'x' | 'y'): Array<number> => {
+const calculateInterval = (
+  children: ReadonlyArray<AltSceneNode>,
+  xOrY: 'x' | 'y'
+): Array<number> => {
   const hOrW: 'width' | 'height' = xOrY === 'x' ? 'width' : 'height'
 
   // sort children based on X or Y values
@@ -243,10 +235,16 @@ const detectAutoLayoutPadding = (
 /**
  * Detect if children stretch or inherit.
  */
-const layoutAlignInChild = (node: AltSceneNode, parentNode: AltFrameNode) => {
-  const sameWidth = node.width - 2 > parentNode.width - parentNode.paddingLeft - parentNode.paddingRight
+const SIZE_THRESHOLD = 3
 
-  const sameHeight = node.height - 2 > parentNode.height - parentNode.paddingTop - parentNode.paddingBottom
+const layoutAlignInChild = (node: AltSceneNode, parentNode: AltFrameNode) => {
+  const sameWidth =
+    node.width - SIZE_THRESHOLD >
+    parentNode.width - parentNode.paddingLeft - parentNode.paddingRight
+
+  const sameHeight =
+    node.height - SIZE_THRESHOLD >
+    parentNode.height - parentNode.paddingTop - parentNode.paddingBottom
 
   if (parentNode.layoutMode === 'VERTICAL') {
     node.layoutAlign = sameWidth ? 'STRETCH' : 'INHERIT'
@@ -285,13 +283,22 @@ const primaryAxisDirection = (
   }
 }
 
+const PADDING_THRESHOLD = 5
+
 const getPaddingDirection = (position: number): 'MIN' | 'CENTER' | 'MAX' => {
   // allow a small threshold
-  if (position < -4) {
+  if (position < -PADDING_THRESHOLD) {
     return 'MIN'
-  } else if (position > 4) {
+  } else if (position > PADDING_THRESHOLD) {
     return 'MAX'
   } else {
     return 'CENTER'
   }
+}
+
+// Get the element with the highest occurrence in an array. https://stackoverflow.com/a/20762713
+const mostFrequentArrayEl = (arr: Array<string>): string | undefined => {
+  return arr
+    .sort((a, b) => arr.filter((v) => v === a).length - arr.filter((v) => v === b).length)
+    .pop()
 }

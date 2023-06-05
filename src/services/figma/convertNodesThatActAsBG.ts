@@ -1,12 +1,10 @@
-import { AltRectangleNode, AltFrameNode, AltGroupNode, AltSceneNode } from './altMixins'
+import { AltRectangleNode, AltFrameNode, AltSceneNode } from './altMixins'
 import { convertToAutoLayout } from './convertToAutoLayout'
 
 /**
  * Identify all nodes that are inside Rectangles and transform those Rectangles into Frames containing those nodes.
  */
-export const convertNodesThatActAsBG = (
-  node: AltFrameNode | AltGroupNode
-): AltFrameNode | AltGroupNode => {
+export const convertNodesThatActAsBG = (node: AltFrameNode): AltFrameNode => {
   const { children } = node
 
   if (children.length < 2) {
@@ -16,7 +14,6 @@ export const convertNodesThatActAsBG = (
   if (!node.id) {
     throw new Error('Node is missing an id! This error should only happen in tests.')
   }
-  console.log(children)
 
   const { newParents, markedOnTopOfRectangles } = retrieveCollidingItems(children)
 
@@ -42,7 +39,7 @@ export const convertNodesThatActAsBG = (
         // Happens, for example, when a large image is used in the background.
         // Should this be handled or is this something user should never do?
 
-        return newFrame
+        return convertToAutoLayout(newFrame)
       }
 
       return child
@@ -58,9 +55,6 @@ export const convertNodesThatActAsBG = (
   if (updatedChildren.length > 1) {
     node.children = updatedChildren
   }
-
-  // convert the resulting node to AutoLayout.
-  // node = convertToAutoLayout(node)
 
   return node
 }
