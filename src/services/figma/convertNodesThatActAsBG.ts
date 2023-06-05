@@ -1,4 +1,3 @@
-import { isFrameNode } from '@figma-plugin/helpers'
 import { AltRectangleNode, AltFrameNode, AltGroupNode, AltSceneNode } from './altMixins'
 import { convertToAutoLayout } from './convertToAutoLayout'
 
@@ -8,49 +7,46 @@ import { convertToAutoLayout } from './convertToAutoLayout'
 export const convertNodesThatActAsBG = (
   node: AltFrameNode | AltGroupNode
 ): AltFrameNode | AltGroupNode => {
-  if (node.children.length < 2) {
+  const { children } = node
+
+  if (children.length < 2) {
     return node
   }
+
   if (!node.id) {
     throw new Error('Node is missing an id! This error should only happen in tests.')
   }
+  console.log(children)
 
-  const colliding = retrieveCollidingItems(node.children)
+  const { newParents, markedOnTopOfRectangles } = retrieveCollidingItems(children)
 
-  const parentsKeys = Object.keys(colliding)
-  // start with all children. This is going to be filtered.
-  let updatedChildren: Array<AltSceneNode> = [...node.children]
+  const updatedChildren = children
+    // First we keep only the children that are not markedOnTopOfRectangles
+    .filter((child) => !markedOnTopOfRectangles[child.id])
+    // Then we update the children that will be converted to frames
+    .map((child) => {
+      if (newParents[child.id]) {
+        const newFrame = convertRectangleToFrame(child as AltRectangleNode)
 
-  parentsKeys.forEach((key) => {
-    // dangerous cast, but this is always true
-    const parentNode = node.children.find((child) => child.id === key) as AltRectangleNode
+        newFrame.parent = { id: child.parent.id, type: 'FRAME' } as AltFrameNode
+        newFrame.children = newParents[child.id]
 
-    // retrieve the position. Key should always be at the left side, so even when other items are removed, the index is kept the same.
-    const indexPosition = updatedChildren.findIndex((d) => d.id === key)
+        // Update children's parent reference
+        newFrame.children.forEach((child: AltFrameNode) => {
+          child.parent = { id: newFrame.id, type: 'FRAME' } as AltFrameNode
+          child.x = child.x - newFrame.x
+          child.y = child.y - newFrame.y
+        })
 
-    // filter the children to remove those that are being modified.
-    updatedChildren = updatedChildren.filter(
-      (child) => !colliding[key].map((d) => d.id).includes(child.id) && key !== child.id
-    )
+        // @TODO: when the soon-to-be-parent is larger than its parent, things get weird.
+        // Happens, for example, when a large image is used in the background.
+        // Should this be handled or is this something user should never do?
 
-    const frameNode = convertRectangleToFrame(parentNode)
+        return newFrame
+      }
 
-    // @TODO: when the soon-to-be-parent is larger than its parent, things get weird.
-    // Happens, for example, when a large image is used in the background.
-    // Should this be handled or is this something user should never do?
-
-    frameNode.children = [...colliding[key]]
-    colliding[key].forEach((d) => {
-      // @ts-ignore
-      d.parent = { id: frameNode.id, type: 'FRAME' }
-      d.x = d.x - frameNode.x
-      d.y = d.y - frameNode.y
+      return child
     })
-
-    // try to convert the children to AutoLayout, and insert back at updatedChildren.
-    // updatedChildren.splice(indexPosition, 0, convertToAutoLayout(frameNode))
-    updatedChildren.splice(indexPosition, 0, frameNode)
-  })
 
   // if there is only one child, remove the parent
   if (updatedChildren.length === 1) {
@@ -67,6 +63,56 @@ export const convertNodesThatActAsBG = (
   // node = convertToAutoLayout(node)
 
   return node
+}
+
+type CollidingItems = {
+  newParents: Record<string, Array<AltSceneNode>>
+  markedOnTopOfRectangles: Record<string, boolean>
+}
+
+/**
+ * Iterate over each Rectangle and check if it has any child on top.
+ * This is O(n^2), but is optimized to only do j=i+1 until length, and avoid repeated entries.
+ * A Node can only have a single parent.
+ * The order is based on the items order in the UI, which deteremines visibility - but in reverse order.
+ * Eg. Background first, then the elements on top.
+ */
+const retrieveCollidingItems = (children: ReadonlyArray<AltSceneNode>): CollidingItems => {
+  const markedOnTop: Record<string, boolean> = {}
+  const newParents: Record<string, Array<AltSceneNode>> = {}
+
+  for (let i = 0; i < children.length - 1; i++) {
+    const bgNode = children[i]
+
+    // ignore items that are not Rectangles
+    if (bgNode.type !== 'VECTOR') {
+      continue
+    }
+
+    for (let j = i + 1; j < children.length; j++) {
+      const topElement = children[j]
+
+      if (
+        !markedOnTop[topElement.id] &&
+        bgNode.x <= topElement.x &&
+        bgNode.y <= topElement.y &&
+        bgNode.x + bgNode.width >= topElement.x + topElement.width &&
+        bgNode.y + bgNode.height >= topElement.y + topElement.height
+      ) {
+        if (!newParents[bgNode.id]) {
+          newParents[bgNode.id] = [topElement]
+        } else {
+          newParents[bgNode.id].push(topElement)
+        }
+        markedOnTop[topElement.id] = true
+      }
+    }
+  }
+
+  return {
+    newParents,
+    markedOnTopOfRectangles: markedOnTop,
+  }
 }
 
 const convertRectangleToFrame = (rect: AltRectangleNode) => {
@@ -107,46 +153,4 @@ const retrieveFillProps = (node: AltRectangleNode) => {
     }
   })
   return props
-}
-
-/**
- * Iterate over each Rectangle and check if it has any child on top.
- * This is O(n^2), but is optimized to only do j=i+1 until length, and avoid repeated entries.
- * A Node can only have a single parent. The order is defined by layer order.
- */
-const retrieveCollidingItems = (
-  children: ReadonlyArray<AltSceneNode>
-): Record<string, Array<AltSceneNode>> => {
-  const used: Record<string, boolean> = {}
-  const groups: Record<string, Array<AltSceneNode>> = {}
-
-  for (let i = 0; i < children.length - 1; i++) {
-    const item1 = children[i]
-
-    // ignore items that are not Rectangles
-    if (item1.type !== 'VECTOR') {
-      continue
-    }
-
-    for (let j = i + 1; j < children.length; j++) {
-      const item2 = children[j]
-
-      if (
-        !used[item2.id] &&
-        item1.x <= item2.x &&
-        item1.y <= item2.y &&
-        item1.x + item1.width >= item2.x + item2.width &&
-        item1.y + item1.height >= item2.y + item2.height
-      ) {
-        if (!groups[item1.id]) {
-          groups[item1.id] = [item2]
-        } else {
-          groups[item1.id].push(item2)
-        }
-        used[item2.id] = true
-      }
-    }
-  }
-
-  return groups
 }
