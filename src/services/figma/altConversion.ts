@@ -1,18 +1,10 @@
-import { getBoundingRect as getBoundingRectFigma } from '@figma-plugin/helpers'
-
-// import { convertNodesOnRectangle } from './convertNodesOnRectangle'
+import { convertNodesOnRectangle } from './convertNodesOnRectangle'
 // import { convertToAutoLayout } from './convertToAutoLayout'
 
 // @TODO: refactor types to be more specific for my usecase
-import {
-  AltSceneNode,
-  AltRectangleNode,
-  AltFrameNode,
-  AltGroupNode,
-  AltVectorNode,
-} from './altMixins'
+import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altMixins'
 
-const VECTOR_TYPES = {
+const ASSET_TYPES = {
   VECTOR: true,
   ELLIPSE: true,
   STAR: true,
@@ -20,14 +12,7 @@ const VECTOR_TYPES = {
   RECTANGLE: true,
 }
 
-const SVG_INDICATOR: ImagePaint = {
-  type: 'IMAGE',
-  imageHash: 'SVG-TRANSFORM',
-  scaleMode: 'FIT',
-}
-
 type NodeWithChildren = FrameNode | InstanceNode | ComponentNode | GroupNode
-type RestType = Omit<AltSceneNode, 'type'>
 
 export const convertIntoAltNodes = (
   sceneNode: ReadonlyArray<AltSceneNode>,
@@ -41,7 +26,7 @@ export const convertIntoAltNodes = (
       return null
     }
 
-    if (type in VECTOR_TYPES) {
+    if (type in ASSET_TYPES) {
       return {
         ...node,
         type: 'VECTOR',
@@ -51,8 +36,6 @@ export const convertIntoAltNodes = (
     // If it is rotated, Figma will take the height of the bounding box.
     // We use that too and apply transform. We apply it for any other type than Vectors
     if (rotation !== undefined && Math.round(rotation) !== 0) {
-      // @ts-ignore
-      node.height = node.absoluteBoundingBox.height
       // @ts-ignore
       node.transform = `rotate(${Math.round(rotation)}deg)`
     }
@@ -105,7 +88,7 @@ export const convertIntoAltNodes = (
       if (containsOnlyVectors(node as NodeWithChildren)) {
         return {
           ...altNode,
-          fills: [SVG_INDICATOR],
+          exportAsSVG: true,
         } as AltFrameNode
       }
 
@@ -120,25 +103,7 @@ export const convertIntoAltNodes = (
 }
 
 const containsOnlyVectors = (node: NodeWithChildren): boolean => {
-  return node.children.every((d) => VECTOR_TYPES[d.type])
-}
-
-// @TODO: decide if I should apply transnform: rotate(node.rotation)
-const computeLayout = (node: AltSceneNode): AltSceneNode => {
-  // Get the correct X/Y position when rotation is applied.
-  // This won't guarantee a perfect position, since we would still
-  // need to calculate the offset based on node width/height to compensate,
-  // which we are not currently doing. However, this is a lot better than nothing and will help LineNode.
-  if (node.rotation !== undefined && Math.round(node.rotation) !== 0) {
-    const boundingRect = getBoundingRectFigma([node] as SceneNode[])
-    // console.log(node.x, node.y, boundingRect)
-    // console.log(node)
-    // console.log(node.x, node.y, boundingRect)
-    node.x = boundingRect.x
-    node.y = boundingRect.y
-  }
-
-  return node
+  return node.children.every((d) => ASSET_TYPES[d.type])
 }
 
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
