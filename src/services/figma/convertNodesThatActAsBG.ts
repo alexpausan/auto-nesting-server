@@ -1,10 +1,11 @@
+import { isFrameNode } from '@figma-plugin/helpers'
 import { AltRectangleNode, AltFrameNode, AltGroupNode, AltSceneNode } from './altMixins'
 import { convertToAutoLayout } from './convertToAutoLayout'
 
 /**
  * Identify all nodes that are inside Rectangles and transform those Rectangles into Frames containing those nodes.
  */
-export const convertNodesOnRectangle = (
+export const convertNodesThatActAsBG = (
   node: AltFrameNode | AltGroupNode
 ): AltFrameNode | AltGroupNode => {
   if (node.children.length < 2) {
@@ -22,40 +23,48 @@ export const convertNodesOnRectangle = (
 
   parentsKeys.forEach((key) => {
     // dangerous cast, but this is always true
-    const parentNode = node.children.find((d) => d.id === key) as AltRectangleNode
+    const parentNode = node.children.find((child) => child.id === key) as AltRectangleNode
 
     // retrieve the position. Key should always be at the left side, so even when other items are removed, the index is kept the same.
     const indexPosition = updatedChildren.findIndex((d) => d.id === key)
 
-    // filter the children to remove those that are being modified
+    // filter the children to remove those that are being modified.
     updatedChildren = updatedChildren.filter(
-      (d) => !colliding[key].map((dd) => dd.id).includes(d.id) && key !== d.id
+      (child) => !colliding[key].map((d) => d.id).includes(child.id) && key !== child.id
     )
 
     const frameNode = convertRectangleToFrame(parentNode)
 
-    // todo when the soon-to-be-parent is larger than its parent, things get weird.
+    // @TODO: when the soon-to-be-parent is larger than its parent, things get weird.
     // Happens, for example, when a large image is used in the background.
     // Should this be handled or is this something user should never do?
 
     frameNode.children = [...colliding[key]]
     colliding[key].forEach((d) => {
       // @ts-ignore
-      d.parent = frameNode
+      d.parent = { id: frameNode.id, type: 'FRAME' }
       d.x = d.x - frameNode.x
       d.y = d.y - frameNode.y
     })
 
     // try to convert the children to AutoLayout, and insert back at updatedChildren.
-    updatedChildren.splice(indexPosition, 0, convertToAutoLayout(frameNode))
+    // updatedChildren.splice(indexPosition, 0, convertToAutoLayout(frameNode))
+    updatedChildren.splice(indexPosition, 0, frameNode)
   })
 
-  if (updatedChildren.length > 0) {
+  // if there is only one child, remove the parent
+  if (updatedChildren.length === 1) {
+    // @ts-ignore
+    updatedChildren[0].parent = node.parent
+    return updatedChildren[0] as AltFrameNode
+  }
+
+  if (updatedChildren.length > 1) {
     node.children = updatedChildren
   }
 
   // convert the resulting node to AutoLayout.
-  node = convertToAutoLayout(node)
+  // node = convertToAutoLayout(node)
 
   return node
 }
@@ -66,53 +75,38 @@ const convertRectangleToFrame = (rect: AltRectangleNode) => {
 
   const frameNode = new AltFrameNode()
 
-  frameNode.parent = rect.parent
+  // opacity should be ignored, else it will affect children
+  const { type, opacity, ...rest } = rect
+  Object.assign(frameNode, rest)
 
-  frameNode.width = rect.width
-  frameNode.height = rect.height
-  frameNode.x = rect.x
-  frameNode.y = rect.y
-  frameNode.rotation = rect.rotation
   frameNode.layoutMode = 'NONE'
 
-  // opacity should be ignored, else it will affect children
-
-  // when invisible, add the layer but don't fill it; he designer might use invisible layers for alignment.
-  // visible can be undefined in tests
+  // @TODO: test for spacer elements
+  // when invisible, add the layer but don't fill it;
+  // Designer might use invisible layers for alignment.
   if (rect.visible !== false) {
-    frameNode.fills = rect.fills
-    frameNode.fillStyleId = rect.fillStyleId
-
-    frameNode.strokes = rect.strokes
-    frameNode.strokeStyleId = rect.strokeStyleId
-
-    frameNode.effects = rect.effects
-    frameNode.effectStyleId = rect.effectStyleId
+    Object.assign(frameNode, retrieveFillProps(rect))
   }
 
   // inner Rectangle shall get a FIXED size
-  frameNode.counterAxisAlignItems = 'MIN'
-  frameNode.counterAxisSizingMode = 'FIXED'
   frameNode.primaryAxisAlignItems = 'MIN'
+  frameNode.counterAxisAlignItems = 'MIN'
   frameNode.primaryAxisSizingMode = 'FIXED'
-
-  frameNode.strokeAlign = rect.strokeAlign
-  frameNode.strokeCap = rect.strokeCap
-  frameNode.strokeJoin = rect.strokeJoin
-  frameNode.strokeMiterLimit = rect.strokeMiterLimit
-  frameNode.strokeWeight = rect.strokeWeight
-
-  frameNode.cornerRadius = rect.cornerRadius
-  frameNode.cornerSmoothing = rect.cornerSmoothing
-  frameNode.topLeftRadius = rect.topLeftRadius
-  frameNode.topRightRadius = rect.topRightRadius
-  frameNode.bottomLeftRadius = rect.bottomLeftRadius
-  frameNode.bottomRightRadius = rect.bottomRightRadius
-
-  frameNode.id = rect.id
-  frameNode.name = rect.name
+  frameNode.counterAxisSizingMode = 'FIXED'
 
   return frameNode
+}
+
+const FILL_PROPS = ['fills', 'fillStyleId', 'strokes', 'strokeStyleId', 'effects', 'effectStyleId']
+
+const retrieveFillProps = (node: AltRectangleNode) => {
+  const props: Record<string, any> = {}
+  FILL_PROPS.forEach((prop) => {
+    if (node[prop]) {
+      props[prop] = node[prop]
+    }
+  })
+  return props
 }
 
 /**
@@ -130,7 +124,7 @@ const retrieveCollidingItems = (
     const item1 = children[i]
 
     // ignore items that are not Rectangles
-    if (item1.type !== 'RECTANGLE') {
+    if (item1.type !== 'VECTOR') {
       continue
     }
 

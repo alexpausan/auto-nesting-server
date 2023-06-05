@@ -1,4 +1,4 @@
-import { convertNodesOnRectangle } from './convertNodesOnRectangle'
+import { convertNodesThatActAsBG } from './convertNodesThatActAsBG'
 // import { convertToAutoLayout } from './convertToAutoLayout'
 
 // @TODO: refactor types to be more specific for my usecase
@@ -21,8 +21,8 @@ export const convertIntoAltNodes = (
   const mapped: Array<AltSceneNode | null> = sceneNode.map((node: AltSceneNode) => {
     const { type, visible, rotation } = node
 
-    // We skip the invisible nodes
-    if (!visible) {
+    // We skip the invisible nodes. By default no value is sent
+    if (visible === false) {
       return null
     }
 
@@ -93,7 +93,8 @@ export const convertIntoAltNodes = (
       }
 
       altNode.children = convertIntoAltNodes(children as Array<AltSceneNode>, altNode)
-      return altNode
+
+      return convertNodesThatActAsBG(altNode)
     }
 
     return node
