@@ -1,4 +1,4 @@
-import { AltFrameNode, AltGroupNode, AltSceneNode } from './altMixins'
+import { AltFrameNode, AltGroupNode, AltSceneNode } from './altTypes'
 
 /**
  * Add AutoLayout attributes if layout has items aligned (either vertically or horizontally).

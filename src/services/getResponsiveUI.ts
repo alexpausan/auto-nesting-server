@@ -19,5 +19,9 @@ export async function getResponsiveUI(node: Magic_Payload) {
     return await processFigmaNode(data)
   }
 
+  if (type === 'wireframe') {
+    // Do something else....
+  }
+
   return 'No type found'
 }

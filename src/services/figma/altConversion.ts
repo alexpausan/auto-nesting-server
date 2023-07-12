@@ -2,7 +2,7 @@ import { convertNodesThatActAsBG } from './convertNodesThatActAsBG'
 import { convertToAutoLayout } from './convertToAutoLayout'
 
 // @TODO: refactor types to be more specific for my usecase
-import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altMixins'
+import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altTypes'
 
 const ASSET_TYPES = {
   VECTOR: true,

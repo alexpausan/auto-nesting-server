@@ -1,4 +1,4 @@
-import { AltRectangleNode, AltFrameNode, AltSceneNode } from './altMixins'
+import { AltRectangleNode, AltFrameNode, AltSceneNode } from './altTypes'
 import { convertToAutoLayout } from './convertToAutoLayout'
 
 /**
