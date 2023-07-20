@@ -10,20 +10,24 @@ export const convertNodesThatActAsBG = (node: AltFrameNode): AltFrameNode => {
   if (children.length < 2) {
     return node
   }
+  console.log('node', node)
 
   if (!node.id) {
     throw new Error('Node is missing an id! This error should only happen in tests.')
   }
 
-  const { newParents, markedOnTopOfRectangles } = retrieveCollidingItems(children)
+  const { newParents, elementsMarkedOnTop } = retrieveCollidingItems(children)
+  console.log('newParents', newParents)
+  console.log('elementsMarkedOnTop', elementsMarkedOnTop)
 
   const updatedChildren = children
-    // First we keep only the children that are not markedOnTopOfRectangles
-    .filter((child) => !markedOnTopOfRectangles[child.id])
+    // First we keep only the children that are not elementsMarkedOnTop
+    .filter((child) => !elementsMarkedOnTop[child.id])
     // Then we update the children that will be converted to frames
     .map((child) => {
+      // If the child is a Rectangle and has elements on top, convert it to a Frame
       if (newParents[child.id]) {
-        const newFrame = convertRectangleToFrame(child as AltRectangleNode)
+        const newFrame = convertNodeToFrame(child as AltRectangleNode)
 
         newFrame.parent = { id: child.parent.id, type: 'FRAME' } as AltFrameNode
         newFrame.children = newParents[child.id]
@@ -61,11 +65,11 @@ export const convertNodesThatActAsBG = (node: AltFrameNode): AltFrameNode => {
 
 type CollidingItems = {
   newParents: Record<string, Array<AltSceneNode>>
-  markedOnTopOfRectangles: Record<string, boolean>
+  elementsMarkedOnTop: Record<string, boolean>
 }
 
 /**
- * Iterate over each Rectangle and check if it has any child on top.
+ * Iterate over each Rectangle and check if it has any element on top.
  * This is O(n^2), but is optimized to only do j=i+1 until length, and avoid repeated entries.
  * A Node can only have a single parent.
  * The order is based on the items order in the UI, which deteremines visibility - but in reverse order.
@@ -105,11 +109,11 @@ const retrieveCollidingItems = (children: ReadonlyArray<AltSceneNode>): Collidin
 
   return {
     newParents,
-    markedOnTopOfRectangles: markedOnTop,
+    elementsMarkedOnTop: markedOnTop,
   }
 }
 
-const convertRectangleToFrame = (rect: AltRectangleNode) => {
+const convertNodeToFrame = (rect: AltRectangleNode) => {
   // if a Rect with elements inside were identified, extract this Rect
   // outer methods are going to use it.
 

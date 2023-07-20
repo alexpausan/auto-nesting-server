@@ -4,7 +4,7 @@ import { convertToAutoLayout } from './convertToAutoLayout'
 // @TODO: refactor types to be more specific for my usecase
 import { AltSceneNode, AltRectangleNode, AltFrameNode, AltGroupNode } from './altTypes'
 
-const ASSET_TYPES = {
+const VECTOR_TYPES = {
   VECTOR: true,
   ELLIPSE: true,
   STAR: true,
@@ -16,28 +16,30 @@ type NodeWithChildren = FrameNode | InstanceNode | ComponentNode | GroupNode
 
 export const convertIntoAltNodes = (
   sceneNode: ReadonlyArray<AltSceneNode>,
-  altParent: AltFrameNode | AltGroupNode | null = null
+  altParent: AltFrameNode | AltGroupNode | null = null,
 ): Array<AltSceneNode> => {
-  const mapped: Array<AltSceneNode | null> = sceneNode.map((node: AltSceneNode) => {
+  const resultNodes = sceneNode.map((node) => {
     const { type, visible, rotation } = node
-
-    // We skip the invisible nodes. By default no value is sent
-    if (visible === false) {
-      return null
-    }
-
-    if (type in ASSET_TYPES) {
-      return {
-        ...node,
-        type: 'VECTOR',
-      } as AltSceneNode
-    }
 
     // If it is rotated, Figma will take the height of the bounding box.
     // We use that too and apply transform. We apply it for any other type than Vectors
     if (rotation !== undefined && Math.round(rotation) !== 0) {
       // @ts-ignore
       node.transform = `rotate(${Math.round(rotation)}deg)`
+    }
+
+    // We skip the invisible nodes. By default no value is sent
+    if (visible === false) {
+      return null
+    }
+
+    if (type in VECTOR_TYPES) {
+      // @TODO: when it's a rectangle, check if it's a "background" and convert it to a frame
+      // See "Frame 5 - to check vector" from Figma file
+      return {
+        ...node,
+        type: 'VECTOR',
+      } as AltSceneNode
     }
 
     if (type === 'LINE') {
@@ -55,7 +57,7 @@ export const convertIntoAltNodes = (
       return altNode
     }
 
-    if (type === 'GROUP' || type === 'FRAME' || type === 'INSTANCE' || type === 'COMPONENT') {
+    if (type === 'GROUP' || type === 'FRAME' || type === 'COMPONENT' || type === 'INSTANCE') {
       const { children } = node
       const { type, ...rest } = node
 
@@ -71,19 +73,18 @@ export const convertIntoAltNodes = (
         } as AltRectangleNode
       }
 
-      if (children.length === 1) {
-        // Skip it and return the child if Group has only one child,
-        if (type === 'GROUP') {
-          const processedChild = convertIntoAltNodes(children as Array<AltSceneNode>, altParent)
-          return processedChild[0]
-        }
-
-        // Fix this: https://stackoverflow.com/questions/57859754/flexbox-space-between-but-center-if-one-element
-        // It affects HTML, Tailwind, Flutter and possibly SwiftUI. So, let's be consistent.
-        if (node.primaryAxisAlignItems === 'SPACE_BETWEEN') {
-          altNode.primaryAxisAlignItems = 'CENTER'
-        }
+      // Skip the element as the group has no HTML equivalent. It will be just a div in div. We return the child
+      if (children.length === 1 && type === 'GROUP') {
+        const processedChild = convertIntoAltNodes(children as Array<AltSceneNode>, altParent)
+        return processedChild[0]
       }
+
+      // TODO: postpone this for later
+      // Fix this: https://stackoverflow.com/questions/57859754/flexbox-space-between-but-center-if-one-element
+      // It affects HTML, Tailwind, Flutter and possibly SwiftUI. So, let's be consistent.
+      // if (node.primaryAxisAlignItems === 'SPACE_BETWEEN') {
+      // altNode.primaryAxisAlignItems = 'CENTER'
+      // }
 
       if (containsOnlyVectors(node as NodeWithChildren)) {
         return {
@@ -92,6 +93,7 @@ export const convertIntoAltNodes = (
         } as AltFrameNode
       }
 
+      // Do the same processing for the children
       altNode.children = convertIntoAltNodes(children as Array<AltSceneNode>, altNode)
 
       return convertToAutoLayout(convertNodesThatActAsBG(altNode))
@@ -100,11 +102,11 @@ export const convertIntoAltNodes = (
     return node
   })
 
-  return mapped.filter(notEmpty)
+  return resultNodes.filter(notEmpty)
 }
 
 const containsOnlyVectors = (node: NodeWithChildren): boolean => {
-  return node.children.every((d) => ASSET_TYPES[d.type])
+  return node.children.every((child) => VECTOR_TYPES[child.type])
 }
 
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
