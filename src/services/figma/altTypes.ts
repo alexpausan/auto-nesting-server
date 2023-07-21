@@ -12,6 +12,7 @@ export type AltSceneNode =
   | LineNode
   | TextNode
   | VectorNode
+  | ComponentSetNode
 
 export interface AltGeometryMixin {
   fills: ReadonlyArray<Paint> | PluginAPI['mixed']

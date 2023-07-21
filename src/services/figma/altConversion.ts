@@ -57,7 +57,13 @@ export const convertIntoAltNodes = (
       return altNode
     }
 
-    if (type === 'GROUP' || type === 'FRAME' || type === 'COMPONENT' || type === 'INSTANCE') {
+    if (
+      type === 'GROUP' ||
+      type === 'FRAME' ||
+      type === 'COMPONENT' ||
+      type === 'INSTANCE' ||
+      type === 'COMPONENT_SET'
+    ) {
       const { children } = node
       const { type, ...rest } = node
 
@@ -111,4 +117,31 @@ const containsOnlyVectors = (node: NodeWithChildren): boolean => {
 
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
   return value !== null && value !== undefined
+}
+
+const PROPS_TO_IGNORE = [
+  'parent',
+  'children',
+  'horizontalPadding',
+  'verticalPadding',
+  'mainComponent',
+  'masterComponent',
+  'variantProperties',
+  'componentPropertyDefinitions',
+  'exposedInstances',
+  'componentProperties',
+  'componenPropertyReferences',
+]
+
+export const cloneNode = <T extends BaseNode>(node: T): T => {
+  // Create the cloned object with the correct prototype
+  const cloned = {} as T
+  // Create a new object with only the desired descriptors (excluding 'parent' and 'children')
+  for (const prop in node) {
+    if (!PROPS_TO_IGNORE.includes(prop)) {
+      cloned[prop as keyof T] = node[prop as keyof T]
+    }
+  }
+
+  return cloned
 }
