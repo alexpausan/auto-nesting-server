@@ -8,6 +8,7 @@ const convertSingleNodeToAlt = (node, parent = null) => {
     return (0, exports.convertIntoAltNodes)([node], parent)[0];
 };
 exports.convertSingleNodeToAlt = convertSingleNodeToAlt;
+
 const frameNodeToAlt = (node, altParent = null) => {
     if (node.children.length === 0) {
         // if it has no children, convert frame to rectangle
