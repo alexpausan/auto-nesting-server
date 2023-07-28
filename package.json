@@ -16,6 +16,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.1.1",
     "express": "^4.18.2",
+    "figma-plugin-ds": "^1.0.1",
     "node-fetch": "^3.3.1"
   },
   "devDependencies": {

@@ -14,7 +14,7 @@ app.post('/magic-layout', async (req: Request, res: Response) => {
   const response = await getResponsiveUI(req.body)
 
   res.json(response)
-  console.log('response', response)
+ // console.log('response', response)
 })
 
 app.listen(port, () => {
